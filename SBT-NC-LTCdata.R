@@ -52,10 +52,23 @@ loc <-loc[grep(".csv", file_name)]
 
 #Make a list of the file names in the folder (TURE= entire path, FALSE= file name only:
 fn <- list.files(file_dir, full.names = TRUE, pattern = "*.csv")
-fn <- fn[basename(fn) %in% loc$file_name]
+#fn <- fn[basename(fn) %in% loc$file_name]
 
 #set file path to read in all csv files in the folder:
 file_paths <- fs::dir_ls("data/")
+
+#read all csv files in the folder:
+
+# create a user defined function
+readdata <- function(x){
+  dt_all <- fread(x, sep=",", header=TRUE, skip=13)
+  return(dt_all)}
+              
+mylist <- lapply(fn, readdata)
+mydata <- rbindlist(mylist, fill = TRUE)
+# bandaid soln to excluding those fucked up baro cols
+mydata <- mydata[,list(Date,Time,ms,LEVEL,TEMPERATURE,CONDUCTIVITY)]
+
 
 file_contents <- list()
 
@@ -69,10 +82,10 @@ for (i in seq_along(file_paths)) {
 file_contents <- set_names(file_contents, file_paths)
 file_paths %>% 
   map(function (path) {
-    read_csv(path)
+    fread(path)
   })
 
-dataset <- as.data.frame(file_contents)
+dt <- as.data.frame(file_contents)
 
 #Read the transducer data specified based on the file name, and file number in the table uploaded to R:
 ##pressure <- read.csv("./Data/1094394_FCT-008-3_2024_07_04_232952.csv",
@@ -81,13 +94,13 @@ dataset <- as.data.frame(file_contents)
 #Choosing one variable to plot: 
 ##Pressure 
 
-#pressure <- pressure[variable %in% c("LEVEL")]
-
-#pressure <- pressure %in% ("LEVEL")
+dt[, file_name := gsub('data/', '', file_name, fixed = TRUE)]
 
 #pressure[, file_name := gsub('../../hydrostream/data/', '', file_name, fixed = TRUE)]
 
-#pr <- loc[pr, on = "file_name"]
+pr <- loc[file_content, on = "file_name"]
+
+
 
 baro <-[port == "baro_nc"]
 wl <- pr[!port %in% c("baro_nc")]
