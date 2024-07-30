@@ -44,64 +44,59 @@ loc <-readxl::read_xlsx("data/Input_North Creek.xlsx",
                         range ="A1:J41")
 
 #Set DataTable 
-setDT(loc)
-loc <- loc[site =="SBT" & well == "UT1-FCT-008-3"]
-
-# search for matches to argument pattern within each element of a character vector:
-loc <-loc[grep(".csv", file_name)]
-
 #Make a list of the file names in the folder (TURE= entire path, FALSE= file name only:
 fn <- list.files(file_dir, full.names = TRUE, pattern = "*.csv")
-#fn <- fn[basename(fn) %in% loc$file_name]
+fn <- fn[basename(fn) %in% loc$file_name]
 
 #set file path to read in all csv files in the folder:
 file_paths <- fs::dir_ls("data/")
 
 #read all csv files in the folder:
+# 
+# df <- rbindlist (lapply (
+#   list.files(path = "data/", pattern = "*.csv"),
+#   fread, select = c('file_name')
+# )
+# )
 
 # create a user defined function
 readdata <- function(x){
-  dt_all <- fread(x, sep=",", header=TRUE, skip=13)
+  dt_all <- fread(x,
+                  sep=",",
+                  header = TRUE,
+                  skip = 13)
   return(dt_all)}
               
-mylist <- lapply(fn, readdata)
+mylist <- lapply(fn, readdata,setnames(fn(pattern="file_name")))
+
+################################################################
+#have this melt function included before making it to a datatable to include the baro here too!!! data.table::melt(setDT())
 mydata <- rbindlist(mylist, fill = TRUE)
 # bandaid soln to excluding those fucked up baro cols
-mydata <- mydata[,list(Date,Time,ms,LEVEL,TEMPERATURE,CONDUCTIVITY)]
+#mydata <- mydata[,list(Date,Time,ms,LEVEL,TEMPERATURE,CONDUCTIVITY)]
 
+#ignore rows (no manipulation), in cal, beside the file_name col, add the following substitution: 
+# for all substitutions, type "data/" followed by file_name, use exact string matching using the existing column:
+mydata[,file_name := gsub('data/', '', mylist, fixed = TRUE)]
 
-file_contents <- list()
+###########################################################
+#Merge the two data tables together Loc and Mydata: Bringing in the loc DT to mydata and match the data with file_name. 
 
-for (i in seq_along(file_paths)) {
-  file_contents[[i]] <- read_csv(
-    file = file_paths[[i]],
-    skip = 13
-  )
-}
+datamerged <- loc[mydata, on = "file_name"]
 
-file_contents <- set_names(file_contents, file_paths)
-file_paths %>% 
-  map(function (path) {
-    fread(path)
-  })
-
-dt <- as.data.frame(file_contents)
-
-#Read the transducer data specified based on the file name, and file number in the table uploaded to R:
-##pressure <- read.csv("./Data/1094394_FCT-008-3_2024_07_04_232952.csv",
-                    # header = TRUE, skip = 13)
+###########################################################
 
 #Choosing one variable to plot: 
-##Pressure 
+##Pressure
+#redefine pr to look in the variable column for pressure/(level) and looking for the exact string match. 
+#pr <- head(select(mydata, LEVEL)
+     #      )
 
-dt[, file_name := gsub('data/', '', file_name, fixed = TRUE)]
 
-#pressure[, file_name := gsub('../../hydrostream/data/', '', file_name, fixed = TRUE)]
+
+
 
 pr <- loc[file_content, on = "file_name"]
+#dt[, file_name := gsub('data/', '', file_name, fixed = TRUE)]
 
 
-
-baro <-[port == "baro_nc"]
-wl <- pr[!port %in% c("baro_nc")]
-wl <- ba[, list(datetime, baro = value)][wl, on = "datetime", nomatch = 0]
