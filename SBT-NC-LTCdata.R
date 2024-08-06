@@ -20,6 +20,7 @@ library(hydrorecipes)
 library(data.table)
 library(tidyverse)
 library(fs)
+library(tidyr)
 
 #remotes::install_github("jkennel/rsk")
 #remotes::install_github("jkennel/transducer")
@@ -31,7 +32,7 @@ library(fs)
 #Covert time and date to the right format and decide the starting and ending time of the analysis.
 
 start <- as.POSIXct("2024-06-06 12:00:00", tz= "UTC")
-end <- as.POSIXct("2024-07-03 18:00:00", tz = "UTC")
+end <- as.POSIXct("2024-07-02 15:00:00", tz = "UTC")
 
 # Set file directory:
 
@@ -46,6 +47,7 @@ file_dir <- "data/"
 loc <-readxl::read_xlsx("data/Input_North Creek.xlsx",
                         sheet = 'Sheet1',
                         range ="A1:J41")
+
 #Generate a datatable using the metadata file we just read in
 
 setDT(loc)
@@ -78,7 +80,11 @@ readdata <- function(x){
               
 # Generate a list of the csv files based on the fn and the function to read data.
 
-mylist <- lapply(fn, readdata)
+#mylist <- lapply(fn, readdata, use.names = TRUE)
+
+mylist <- sapply(fn,readdata, simplify = FALSE, USE.NAMES = TRUE)
+#sapply(n,FUN = ...,simplify = FALSE,USE.NAMES = TRUE)
+
 
 ################################################################
 ################################################################
@@ -87,14 +93,19 @@ mylist <- lapply(fn, readdata)
 # Notice if you have a different number of columns or rows you might need to use a function called "melt" to merge these differences in the cvs files accordingly. JH cheated here.
 
 mydata <- rbindlist(mylist, fill = TRUE, idcol = TRUE)
-mydata$file_name <-loc[mydata$.id,2]
+
+mydata[, .id := gsub('data/','',.id, fixed = TRUE)]
+mydata$file_name <- mydata$.id
+
+#mydata$file_name <-loc[mydata$.id,2]
 
 # Specify columns to show (if necessary)
 #mydata <- mydata[,list(Date,Time,ms,LEVEL,TEMPERATURE,CONDUCTIVITY)]
 
 # Add the infromation in dt 'loc' to mydata dt based on the file name. Here I'm generating a new table instead of replacing/ adding rows in already existing dt.
 
-data_all <-loc[mydata, on = "file_name"]
+data_all <- loc[mydata, on = "file_name"]
+
 
 ##############################################################
 ##############################################################
@@ -146,9 +157,14 @@ wl_sub <- wl[datetime_adj %between% c(start,end)]
 
 wl_sub[, value_adj := LEVEL - LEVEL[1], by = well]
 
+# use a if function to make sure to get all conductivity values 
+
+wl_sub$conductivity_adj <- ifelse(is.na(wl_sub$CONDUCTIVITY), wl_sub$CON_UCTIVITY, wl_sub$CONDUCTIVITY)
+
+
 # Specify the wells you want to plot:
 
-wl_sub <- wl_sub[wl_sub$well %in% c("UT1-FCT-008-3", "UT1-FCT-008-2", "UT1-FCT-008-1")]
+wl_sub <- wl_sub[wl_sub$well %in% c("UT1-FCT-005-3", "UT1-FCT-005-2", "UT1-FCT-005-1")]
 setkey(wl_sub, datetime_adj)
     #################################################################
 #######################TIME TO PLOT######################################
@@ -157,7 +173,7 @@ setkey(wl_sub, datetime_adj)
 # Start with plotting value adjusted and here change to head if you want to look at the water column. 
 p1 <- plot_ly(wl_sub[as.numeric(datetime_adj) %% 60 == 0],
               x = wl_sub$datetime_adj,
-              y = wl_sub$value_adj,
+              y = wl_sub$head,
               color = wl_sub$well,
               colors = viridis(20),
               #name = ~well,
@@ -166,17 +182,19 @@ p1 <- plot_ly(wl_sub[as.numeric(datetime_adj) %% 60 == 0],
 # call the plot:
 # p1
 
+
 # Plot two will include conductivity
 p2 <- plot_ly(wl_sub[as.numeric(datetime_adj) %% 60 == 0],
               x = wl_sub$datetime_adj,
-              y = wl_sub$CONDUCTIVITY,
+              y = wl_sub$conductivity_adj,
               color = wl_sub$well,
               colors = viridis(20),
               #name = ~well,
               type = "scatter", mode = "lines", showlegend=FALSE)
   
 # call the plot:
-# p2
+# 
+p2
 
 # Plot three will include temperature
 p3 <- plot_ly(wl_sub[as.numeric(datetime_adj) %% 60 == 0],
@@ -197,24 +215,30 @@ p_baro <- plot_ly(wl_sub[as.numeric(datetime_adj) %% 60 == 0],
               name = "Baro",
               type = "scatter", mode = "line")
 
-# p_baro
+#p_baro
 
 # Show numerous plots in a single view
 
 subplot(p1,p_baro,p2,p3, shareX = TRUE, nrows = 4)%>%
           layout(
-            title = list(text="UT1-FCT-008",font = list(size = 20), xref='paper', xref='paper', xanchor = 'center', yanchor = 'top'),
+            title = list(text="UT1-FCT-005",font = list(size = 20), xref='paper', xref='paper', xanchor = 'center', yanchor = 'top'),
             legend=list(title=list(text='Well ID')),
             xaxis = list(title = "Date and time",
-                         #minor(ticklen=10, tickmode='auto', nticks=10,
                          tickangle = "30",
+                         ticks='outside',
+                         nticks=10,
+                         minorticks=5,
+                         tickcolor = 'gray80',
+                         gridcolor = 'gray80',
                          showgrid = TRUE), # Ensure grid lines are shown
-            yaxis = list(title = "Relative pressure", range = list(-0.2, 0.2)),
+            grid =list(x=10, y='auto'),
+            yaxis = list(title = "Head"),# range = list(-0.2, 0.1)),
             yaxis2 = list(title = 'Pressure'),
-            yaxis3 = list(title ="Conductivity"),
-            yaxis4 = list(title ="Temperature", range = list(2,5))
+            yaxis3 = list(title ="Conductivity"),# range = list(100,600)),
+            yaxis4 = list(title ="Temperature")#, range = list(2,5.5))
             
           )
+
 
 
 ##########################################################################
